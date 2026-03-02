@@ -1,0 +1,34 @@
+# Build
+.build/
+DerivedData/
+
+# App bundle
+*.app/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# macOS
+.DS_Store
+._*
+
+# Swift Package Manager
+Package.resolved
+.swiftpm/
+
+# IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Secrets
+*.env
+
+# Docs (internal)
+需求.md
+asr.md
+chat.md
