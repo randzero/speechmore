@@ -1,79 +1,81 @@
 # SpeechMore
 
-一个轻量级 macOS 菜单栏语音助手，基于 [阶跃星辰 (StepFun)](https://www.stepfun.com/) 的实时 ASR 和 LLM API 构建。
+[中文](README_CN.md) | English
 
-按住快捷键即可实时语音识别、AI 问答或翻译，松手即停，结果显示在屏幕底部浮层中。
+A lightweight macOS menu bar voice assistant powered by [StepFun](https://www.stepfun.com/) Realtime ASR and LLM APIs.
 
-## 功能
+Hold a hotkey to start real-time speech recognition, AI Q&A, or translation. Release to stop. Results appear in a floating overlay at the bottom of the screen.
 
-| 快捷键 | 模式 | 说明 |
-|--------|------|------|
-| 按住 **右 ⌥ (Option)** | 语音输入 | 实时语音转文字 (ASR 直出) |
-| 按住 右⌥ → 再按 **Space** | 随便问 | 语音提问，AI 回答 (ASR + LLM) |
-| 按住 右⌥ → 再按 **左 Shift** | 翻译 | 语音翻译为目标语言 (ASR + LLM) |
+## Features
 
-- 按住右 Option 立即开始录音，录音过程中可按 Space / Shift 升级模式
-- 松开右 Option 结束录音
-- 结果展示在屏幕底部浮层，支持手动复制
+| Shortcut | Mode | Description |
+|----------|------|-------------|
+| Hold **Right ⌥ (Option)** | Voice Input | Real-time speech-to-text (ASR only) |
+| Hold Right ⌥ → then press **Space** | Ask Anything | Voice question → AI answer (ASR + LLM) |
+| Hold Right ⌥ → then press **Left Shift** | Translate | Voice translation to target language (ASR + LLM) |
 
-## 系统要求
+- Holding Right Option immediately starts recording; press Space / Shift during recording to upgrade the mode
+- Releasing Right Option stops recording
+- Results are shown in a bottom overlay with a manual copy button
 
-- macOS 13.0 (Ventura) 或更高版本
+## Requirements
+
+- macOS 13.0 (Ventura) or later
 - Swift 5.9+
-- [阶跃星辰 API Key](https://platform.stepfun.com/)
+- [StepFun API Key](https://platform.stepfun.com/)
 
-## 构建 & 安装
+## Build & Install
 
 ```bash
-# 克隆仓库
+# Clone the repo
 git clone <repo-url>
 cd speechmore
 
-# 构建并安装到 /Applications
+# Build and install to /Applications
 bash build-app.sh
 
-# 运行
+# Run
 open /Applications/SpeechMore.app
 ```
 
-首次启动会自动弹出辅助功能权限请求，需要在 **系统设置 → 隐私与安全性 → 辅助功能** 中允许。
+On first launch, the app will prompt for Accessibility permission. Grant it in **System Settings → Privacy & Security → Accessibility**.
 
-## 配置
+## Configuration
 
-点击菜单栏的 **波形图标** → **打开主页**：
+Click the **waveform icon** in the menu bar → **Open Main Window**:
 
-1. 填入 Step API Key
-2. 选择翻译目标语言（默认 English）
+1. Enter your StepFun API Key
+2. Choose the translation target language (default: English)
 
-设置会自动保存到 UserDefaults。
+Settings are persisted via UserDefaults.
 
-## 项目结构
+## Project Structure
 
 ```
 Sources/SpeechMore/
-├── App/                # 应用入口、AppDelegate
-├── Audio/              # 麦克风录音 (AudioRecorder)
-├── Core/               # AppState、Constants、Settings、LogStore
-├── Features/           # FeatureCoordinator、FeatureMode、TextInjector
-├── HotKey/             # 全局快捷键监听 (HotKeyManager)
-├── Network/            # ASR WebSocket 客户端、LLM HTTP 客户端
-└── UI/                 # 菜单栏、主窗口、浮层 (OverlayPanel/View)
+├── App/                # App entry point, AppDelegate
+├── Audio/              # Microphone recording (AudioRecorder)
+├── Core/               # AppState, Constants, Settings, LogStore
+├── Features/           # FeatureCoordinator, FeatureMode, TextInjector
+├── HotKey/             # Global hotkey monitoring (HotKeyManager)
+├── Network/            # ASR WebSocket client, LLM HTTP client
+└── UI/                 # Menu bar, main window, overlay (OverlayPanel/View)
 ```
 
-## 技术栈
+## Tech Stack
 
-- **语言**: Swift / SwiftUI
-- **构建**: Swift Package Manager
-- **ASR**: StepFun Realtime ASR (WebSocket 流式识别)
-- **LLM**: StepFun Chat Completions (SSE 流式输出)
-- **音频**: AVFoundation (PCM 16-bit 16kHz)
+- **Language**: Swift / SwiftUI
+- **Build**: Swift Package Manager
+- **ASR**: StepFun Realtime ASR (WebSocket streaming)
+- **LLM**: StepFun Chat Completions (SSE streaming)
+- **Audio**: AVFoundation (PCM 16-bit 16kHz)
 
-## 主页 & 日志
+## Main Window & Logs
 
-应用提供一个独立的主页窗口（从菜单栏弹窗中点击"打开主页"），包含：
+The app provides a standalone main window (accessible from the menu bar popover → "Open Main Window") with:
 
-- **主页 Tab**: API Key 设置、语言选择、快捷键说明
-- **日志 Tab**: 实时运行日志，方便排查问题
+- **Home Tab**: API Key settings, language selection, shortcut reference
+- **Logs Tab**: Real-time runtime logs for debugging
 
 ## License
 
