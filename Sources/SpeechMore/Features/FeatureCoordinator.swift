@@ -79,13 +79,18 @@ final class FeatureCoordinator {
 
     func stop() {
         audioRecorder.stopRecording()
-        asrClient?.sendCommit()
+
+        // Only send commit if ASR is still alive
+        if asrClient != nil {
+            asrClient?.sendCommit()
+        }
 
         let state = AppState.shared
         if state.partialTranscript.isEmpty && state.finalTranscript.isEmpty {
             state.phase = .transcribing
         }
 
+        // Give time for final transcript, then cleanup
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
             self?.asrClient?.disconnect()
             self?.asrClient = nil

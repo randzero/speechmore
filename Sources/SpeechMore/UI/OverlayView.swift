@@ -54,6 +54,15 @@ struct OverlayView: View {
                     .foregroundColor(.white)
                 Spacer()
                 phaseIndicator
+
+                Button(action: { state.overlayStyle = .hidden }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.white.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
             }
 
             Divider()

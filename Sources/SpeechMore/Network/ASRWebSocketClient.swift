@@ -27,13 +27,13 @@ final class ASRWebSocketClient: NSObject, URLSessionWebSocketDelegate {
         self.webSocket = task
         task.resume()
 
-        print("[ASR] Connecting to \(Constants.asrWebSocketURL)")
+        appLog("[ASR] Connecting to \(Constants.asrWebSocketURL)")
     }
 
     func sendSessionUpdate() {
         let msg = ASRSessionUpdate.defaultUpdate()
         sendJSON(msg)
-        print("[ASR] Sent session.update")
+        appLog("[ASR] Sent session.update")
     }
 
     func sendAudio(_ pcmData: Data) {
@@ -48,38 +48,56 @@ final class ASRWebSocketClient: NSObject, URLSessionWebSocketDelegate {
     func sendCommit() {
         let msg = ASRBufferCommit.create()
         sendJSON(msg)
-        print("[ASR] Sent input_audio_buffer.commit")
+        appLog("[ASR] Sent input_audio_buffer.commit")
     }
 
     func disconnect() {
+        isConnected = false
         webSocket?.cancel(with: .normalClosure, reason: nil)
         webSocket = nil
-        isConnected = false
-        print("[ASR] Disconnected")
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
+        appLog("[ASR] Disconnected")
     }
 
     // MARK: - URLSessionWebSocketDelegate
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        print("[ASR] WebSocket connected")
+        appLog("[ASR] WebSocket connected")
         isConnected = true
         sendSessionUpdate()
         receiveMessage()
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        print("[ASR] WebSocket closed: \(closeCode)")
+        appLog("[ASR] WebSocket closed: \(closeCode)")
         isConnected = false
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let error = error else { return }
+        let nsErr = error as NSError
+        if nsErr.code == NSURLErrorCancelled || nsErr.code == 57 { return }
+        appLog("[ASR] Connection error: \(error.localizedDescription)")
+        isConnected = false
+        onError?(error.localizedDescription)
     }
 
     // MARK: - Private
 
     private func sendJSON<T: Encodable>(_ message: T) {
+        guard isConnected else {
+            appLog("[ASR] Send skipped: not connected")
+            return
+        }
         guard let data = try? encoder.encode(message),
               let text = String(data: data, encoding: .utf8) else { return }
         webSocket?.send(.string(text)) { error in
             if let error = error {
-                print("[ASR] Send error: \(error)")
+                let nsErr = error as NSError
+                // Ignore cancellation errors
+                if nsErr.code == NSURLErrorCancelled || nsErr.code == 57 { return }
+                appLog("[ASR] Send error: \(error)")
             }
         }
     }
@@ -103,7 +121,10 @@ final class ASRWebSocketClient: NSObject, URLSessionWebSocketDelegate {
                 self.receiveMessage()
 
             case .failure(let error):
-                print("[ASR] Receive error: \(error)")
+                let nsErr = error as NSError
+                // Ignore cancellation / socket-not-connected during teardown
+                if nsErr.code == NSURLErrorCancelled || nsErr.code == 57 { return }
+                appLog("[ASR] Receive error: \(error)")
                 self.onError?(error.localizedDescription)
             }
         }
@@ -114,28 +135,28 @@ final class ASRWebSocketClient: NSObject, URLSessionWebSocketDelegate {
 
         // Parse type first
         guard let envelope = try? decoder.decode(ASRServerEnvelope.self, from: data) else {
-            print("[ASR] Failed to decode message: \(text.prefix(200))")
+            appLog("[ASR] Failed to decode message: \(text.prefix(200))")
             return
         }
 
         switch envelope.type {
         case "session.created":
-            print("[ASR] Session created")
+            appLog("[ASR] Session created")
 
         case "session.updated":
-            print("[ASR] Session updated")
+            appLog("[ASR] Session updated")
 
         case "input_audio_buffer.speech_started":
-            print("[ASR] Speech started")
+            appLog("[ASR] Speech started")
 
         case "input_audio_buffer.speech_stopped":
-            print("[ASR] Speech stopped")
+            appLog("[ASR] Speech stopped")
 
         case "input_audio_buffer.committed":
-            print("[ASR] Buffer committed")
+            appLog("[ASR] Buffer committed")
 
         case "conversation.item.created":
-            print("[ASR] Conversation item created")
+            appLog("[ASR] Conversation item created")
 
         case "conversation.item.input_audio_transcription.delta":
             if let delta = try? decoder.decode(ASRTranscriptionDelta.self, from: data),
@@ -146,19 +167,19 @@ final class ASRWebSocketClient: NSObject, URLSessionWebSocketDelegate {
         case "conversation.item.input_audio_transcription.completed":
             if let completed = try? decoder.decode(ASRTranscriptionCompleted.self, from: data),
                let transcript = completed.transcript {
-                print("[ASR] Final transcript: \(transcript)")
+                appLog("[ASR] Final transcript: \(transcript)")
                 onFinalTranscript?(transcript)
             }
 
         case "error":
             if let errMsg = try? decoder.decode(ASRError.self, from: data) {
                 let message = errMsg.error?.message ?? "Unknown ASR error"
-                print("[ASR] Error: \(message)")
+                appLog("[ASR] Error: \(message)")
                 onError?(message)
             }
 
         default:
-            print("[ASR] Unknown message type: \(envelope.type)")
+            appLog("[ASR] Unknown message type: \(envelope.type)")
         }
     }
 }
