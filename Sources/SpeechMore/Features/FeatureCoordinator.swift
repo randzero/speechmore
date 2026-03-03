@@ -10,6 +10,9 @@ final class FeatureCoordinator {
     private var accumulatedResult = ""
     private var accumulatedTranscript = ""
     private var hasReceivedFirstToken = false
+    private var transcriptReceived = false
+    private var dismissTimer: DispatchWorkItem?
+    private var timeoutTimer: DispatchWorkItem?
 
     func start(mode: FeatureMode) {
         guard Settings.shared.hasAPIKey else {
@@ -18,10 +21,15 @@ final class FeatureCoordinator {
             return
         }
 
+        // Cancel any pending timers from previous session
+        dismissTimer?.cancel()
+        timeoutTimer?.cancel()
+
         currentMode = mode
         accumulatedResult = ""
         accumulatedTranscript = ""
         hasReceivedFirstToken = false
+        transcriptReceived = false
         let state = AppState.shared
         state.reset()
         state.currentMode = mode
@@ -45,17 +53,33 @@ final class FeatureCoordinator {
         asr.onFinalTranscript = { [weak self] text in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.transcriptReceived = true
                 AppState.shared.finalTranscript = text
                 appLog("[Coordinator] Final transcript: \(text.prefix(50))...")
                 self.handleTranscriptComplete(transcript: text)
             }
         }
 
-        asr.onError = { error in
+        asr.onError = { [weak self] error in
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 appLog("[Coordinator] ASR error: \(error)")
-                AppState.shared.phase = .error(error)
-                AppState.shared.overlayStyle = .expanded
+                // If we haven't received any transcript yet, this is likely
+                // a quick press-and-release — handle gracefully
+                if !self.transcriptReceived {
+                    self.cleanup()
+                    if self.accumulatedTranscript.isEmpty {
+                        // No speech at all — just dismiss quietly
+                        AppState.shared.overlayStyle = .hidden
+                    } else {
+                        // Had partial transcript — show it as result
+                        self.showPartialAsResult()
+                    }
+                } else {
+                    AppState.shared.phase = .error(error)
+                    AppState.shared.overlayStyle = .expanded
+                    self.dismissAfterDelay()
+                }
             }
         }
 
@@ -80,33 +104,51 @@ final class FeatureCoordinator {
     func stop() {
         audioRecorder.stopRecording()
 
+        // If no transcript received and no partial text, it's a quick tap — cancel immediately
+        if accumulatedTranscript.isEmpty && !transcriptReceived {
+            appLog("[Coordinator] Quick release with no speech — cancelling")
+            cleanup()
+            AppState.shared.overlayStyle = .hidden
+            return
+        }
+
         // Only send commit if ASR is still alive
         if asrClient != nil {
             asrClient?.sendCommit()
         }
 
         let state = AppState.shared
-        if state.partialTranscript.isEmpty && state.finalTranscript.isEmpty {
+        if !transcriptReceived {
             state.phase = .transcribing
         }
 
-        // Give time for final transcript, then cleanup
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
-            self?.asrClient?.disconnect()
-            self?.asrClient = nil
+        // Timeout: if no final transcript arrives within 6s, use partial or dismiss
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard !self.transcriptReceived else { return }
+            appLog("[Coordinator] Timeout waiting for final transcript")
+            self.cleanup()
+            if self.accumulatedTranscript.isEmpty {
+                AppState.shared.overlayStyle = .hidden
+            } else {
+                self.showPartialAsResult()
+            }
         }
+        self.timeoutTimer = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: timeout)
     }
 
     // MARK: - Processing
 
     private func handleTranscriptComplete(transcript: String) {
+        timeoutTimer?.cancel()
         guard let mode = currentMode else { return }
 
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            AppState.shared.phase = .error("未检测到语音")
-            AppState.shared.overlayStyle = .expanded
-            dismissAfterDelay()
+            appLog("[Coordinator] Empty transcript — dismissing")
+            cleanup()
+            AppState.shared.overlayStyle = .hidden
             return
         }
 
@@ -114,7 +156,6 @@ final class FeatureCoordinator {
         asrClient = nil
 
         if mode == .voiceInput {
-            // voiceInput: ASR only, no LLM — show result directly
             appLog("[Coordinator] voiceInput: showing ASR result directly")
             let state = AppState.shared
             state.llmResult = text
@@ -122,8 +163,29 @@ final class FeatureCoordinator {
             state.overlayStyle = .expanded
             dismissAfterDelay(seconds: 10)
         } else {
-            // askAnything / translate: send to LLM
             AppState.shared.phase = .processing
+            startLLM(transcript: text)
+        }
+    }
+
+    /// Use accumulated partial transcript as the final result
+    private func showPartialAsResult() {
+        let text = accumulatedTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            AppState.shared.overlayStyle = .hidden
+            return
+        }
+        appLog("[Coordinator] Using partial transcript as result")
+        let state = AppState.shared
+
+        if currentMode == .voiceInput {
+            state.llmResult = text
+            state.phase = .done
+            state.overlayStyle = .expanded
+            dismissAfterDelay(seconds: 10)
+        } else {
+            state.finalTranscript = text
+            state.phase = .processing
             startLLM(transcript: text)
         }
     }
@@ -171,19 +233,30 @@ final class FeatureCoordinator {
         let state = AppState.shared
         state.phase = .done
         appLog("[Coordinator] LLM complete")
-        // Keep expanded, user can manually copy
         dismissAfterDelay(seconds: 10)
         llmClient = nil
     }
 
+    private func cleanup() {
+        timeoutTimer?.cancel()
+        asrClient?.disconnect()
+        asrClient = nil
+        llmClient?.cancel()
+        llmClient = nil
+    }
+
     private func dismissAfterDelay(seconds: Double = 2.0) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
-            if case .done = AppState.shared.phase {
+        dismissTimer?.cancel()
+        let work = DispatchWorkItem {
+            let phase = AppState.shared.phase
+            if case .done = phase {
                 AppState.shared.overlayStyle = .hidden
             }
-            if case .error = AppState.shared.phase {
+            if case .error = phase {
                 AppState.shared.overlayStyle = .hidden
             }
         }
+        dismissTimer = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 }

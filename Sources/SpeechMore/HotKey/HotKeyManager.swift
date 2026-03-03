@@ -14,19 +14,35 @@ final class HotKeyManager {
     private var localKeyDownMonitor: Any?
     private var localKeyUpMonitor: Any?
     private var retryTimer: Timer?
+    private var settingsObserver: Any?
 
-    private var optionDown = false
+    private var triggerDown = false
     private var spaceDown = false
     private var shiftDown = false
     private var activeMode: FeatureMode?
 
+    private var triggerKey: TriggerKey { Settings.shared.triggerKey }
+
     init() {
         trySetupMonitors()
+        // Re-install monitors when trigger key changes
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: .triggerKeyChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.endModeIfActive()
+            self?.triggerDown = false
+            self?.spaceDown = false
+            self?.shiftDown = false
+            appLog("[HotKey] Trigger key changed to: \(Settings.shared.triggerKey.displayName)")
+        }
     }
 
     deinit {
         retryTimer?.invalidate()
         removeMonitors()
+        if let obs = settingsObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
     }
 
     private func trySetupMonitors() {
@@ -75,7 +91,7 @@ final class HotKeyManager {
             return event
         }
 
-        appLog("[HotKey] All monitors installed. Trigger: hold Right Option (⌥)")
+        appLog("[HotKey] All monitors installed. Trigger: hold \(triggerKey.displayName)")
     }
 
     private func removeMonitors() {
@@ -98,17 +114,18 @@ final class HotKeyManager {
     private func handleFlags(_ event: NSEvent) {
         let keyCode = event.keyCode
         let flags = event.modifierFlags
+        let tk = triggerKey
 
-        // Right Option key (keyCode 61)
-        if keyCode == Constants.rightOptionKeyCode {
-            let isOption = flags.contains(.option)
-            if isOption && !optionDown {
-                optionDown = true
-                appLog("[HotKey] Right Option DOWN")
+        // Trigger key (Fn or Right Option)
+        if keyCode == tk.keyCode {
+            let isDown = (flags.rawValue & tk.modifierFlag) != 0
+            if isDown && !triggerDown {
+                triggerDown = true
+                appLog("[HotKey] \(tk.shortLabel) DOWN")
                 startMode()
-            } else if !isOption && optionDown {
-                optionDown = false
-                appLog("[HotKey] Right Option UP")
+            } else if !isDown && triggerDown {
+                triggerDown = false
+                appLog("[HotKey] \(tk.shortLabel) UP")
                 endModeIfActive()
             }
         }
@@ -118,7 +135,7 @@ final class HotKeyManager {
             let isShift = flags.contains(.shift)
             if isShift && !shiftDown {
                 shiftDown = true
-                if optionDown { tryUpgradeMode() }
+                if triggerDown { tryUpgradeMode() }
             } else if !isShift && shiftDown {
                 shiftDown = false
             }
@@ -126,7 +143,7 @@ final class HotKeyManager {
     }
 
     private func handleKeyDown(_ event: NSEvent) {
-        if event.keyCode == Constants.spaceKeyCode && optionDown && !spaceDown {
+        if event.keyCode == Constants.spaceKeyCode && triggerDown && !spaceDown {
             spaceDown = true
             tryUpgradeMode()
         }
@@ -143,7 +160,7 @@ final class HotKeyManager {
     /// Start a new session: always begins as voiceInput
     private func startMode() {
         guard activeMode == nil else { return }
-        guard optionDown else { return }
+        guard triggerDown else { return }
         guard Settings.shared.hasAPIKey else {
             appLog("[HotKey] No API key configured.")
             return

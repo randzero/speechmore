@@ -22,6 +22,7 @@ enum Constants {
     // MARK: - UserDefaults Keys
     static let apiKeyKey = "speechmore_api_key"
     static let targetLanguageKey = "speechmore_target_language"
+    static let triggerKeyKey = "speechmore_trigger_key"
 
     // MARK: - UI (expanded panel)
     static let overlayWidth: CGFloat = 360

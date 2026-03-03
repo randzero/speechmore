@@ -59,9 +59,9 @@ struct MenuBarView: View {
                 Text("快捷键")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                shortcutRow(keys: "按住 右⌥", desc: "语音输入")
-                shortcutRow(keys: "按住 右⌥+Space", desc: "随便问")
-                shortcutRow(keys: "按住 右⌥+Shift", desc: "翻译")
+                shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel)", desc: "语音输入")
+                shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel)+Space", desc: "随便问")
+                shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel)+Shift", desc: "翻译")
             }
             .font(.system(size: 12))
 

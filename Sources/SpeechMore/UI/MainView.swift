@@ -85,12 +85,32 @@ struct MainView: View {
                         .frame(width: 200)
                     }
 
+                    // Trigger Key
+                    settingsSection(title: "触发键") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Picker("", selection: $settings.triggerKey) {
+                                ForEach(TriggerKey.allCases) { key in
+                                    Text(key.displayName).tag(key)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 200)
+
+                            if let hint = settings.triggerKey.hint {
+                                Text(hint)
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+
                     // Shortcuts
                     settingsSection(title: "快捷键") {
                         VStack(alignment: .leading, spacing: 8) {
-                            shortcutRow(keys: "按住 右⌥", desc: "语音输入（ASR 直出）")
-                            shortcutRow(keys: "按住 右⌥ → 再按 Space", desc: "随便问（ASR + LLM）")
-                            shortcutRow(keys: "按住 右⌥ → 再按 Shift", desc: "翻译（ASR + LLM）")
+                            shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel)", desc: "语音输入（ASR 直出）")
+                            shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel) → 再按 Space", desc: "随便问（ASR + LLM）")
+                            shortcutRow(keys: "按住 \(settings.triggerKey.shortLabel) → 再按 Shift", desc: "翻译（ASR + LLM）")
                         }
                         .font(.system(size: 13))
                     }
